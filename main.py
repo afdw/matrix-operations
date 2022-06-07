@@ -94,10 +94,17 @@ class Matrix:
     def __truediv__(self, other):
         return Matrix([[self[i, j] / other for j in range(self.m)] for i in range(self.n)])
 
+    def transpose(self):
+        return Matrix([[self[i, j] for i in range(self.n)] for j in range(self.m)])
+
+    def append_bottom(self, other):
+        assert self.m == other.m
+        return Matrix([[self[i, j] if i < self.n else other[i - self.n, j] for j in range(self.m)] for i in range(self.n + other.n)])
+
     def denominators_lcm(self):
         return lcm(*(x.denominator for x in self)) if self.rational else 1
 
-    def row_reduce(self, integerize=False):
+    def row_reduce(self, bound=None, integerize=False):
         """
         >>> Matrix([[0, 0, 1], [0, 1, 0], [1, 0, 0]]).row_reduce()
         (1 0 0
@@ -116,17 +123,21 @@ class Matrix:
          0 3 6  0 7  -4
          0 0 0  1 -2 1 )
         """
+        if bound is None:
+            bound = self.m
         self = Matrix(self)
-        for j in range(self.m):
-            for i in range(j, self.n):
+        l = 0
+        for j in range(bound):
+            for i in range(l, self.n):
                 if self[i, j] != 0:
-                    self[j, :], self[i, :] = self[i, :], self[j, :]
-                    self[j, :] /= self[j, j]
-                    for k in range(j + 1, self.n):
-                        self[k, :] -= self[j, :] * self[k, j]
+                    self[l, :], self[i, :] = self[i, :], self[l, :]
+                    self[l, :] /= self[l, j]
+                    for k in range(l + 1, self.n):
+                        self[k, :] -= self[l, :] * self[k, j]
+                    l += 1
                     break
         for i in range(self.n):
-            for j in range(self.m):
+            for j in range(bound):
                 if self[i, j] != 0:
                     self[i, :] /= self[i, j]
                     for k in range(i):
@@ -141,6 +152,41 @@ class Matrix:
                     if div != 0:
                         self[i, :] /= div
         return self
+
+    def column_reduce(self, bound=None, integerize=False):
+        return self.transpose().row_reduce(bound=bound, integerize=integerize).transpose()
+
+    def remove_zero_rows(self):
+        return Matrix([[self[i, j] for j in range(self.m)] for i in range(self.n) if any(self[i, j] != 0 for j in range(self.m))])
+
+    def remove_zero_columns(self):
+        return self.transpose().remove_zero_rows().transpose()
+
+    def range(self):
+        """
+        >>> Matrix([[1, 0, -3, 0, 2, -8], [0, 1, 5, 0, -1, 4], [0, 0, 0, 1, 7, -9], [0, 0, 0, 0, 0, 0]]).range()
+        (1 0 0
+         0 1 0
+         0 0 1
+         0 0 0)
+        """
+        return self.column_reduce(integerize=True).remove_zero_columns()
+
+    def rang(self):
+        return self.range().m
+
+    def null(self):
+        """
+        >>> Matrix([[1, 0, -3, 0, 2, -8], [0, 1, 5, 0, -1, 4], [0, 0, 0, 1, 7, -9], [0, 0, 0, 0, 0, 0]]).null()
+        (3  2  8
+         -5 -1 -4
+         1  0  0
+         0  7  9
+         0  -1 0
+         0  0  1 )
+        """
+        reduced = self.append_bottom(Matrix.identity(self.m)).column_reduce(bound=self.n, integerize=True)
+        return Matrix([[reduced[i, j] for j in range(self.m) if all(reduced[i, j] == 0 for i in range(self.n))] for i in range(self.n, self.n + self.m)])
 
 if __name__ == "__main__":
     import doctest
