@@ -23,7 +23,9 @@ class Matrix:
         self.n = len(self.data)
         self.m = 0 if len(self.data) == 0 else len(self.data[0])
         assert all(len(self.data[i]) == self.m for i in range(self.n))
-        self.rational = all(type(self.data[i][j]) in {int, Fraction} for j in range(self.m) for i in range(self.n))
+        if self.m == 0:
+            self.n = 0
+        self.rational = all(type(self.data[i][j]) in {int, Fraction} for i in range(self.n) for j in range(self.m))
         self.data = [[Fraction(self.data[i][j]) if self.rational else self.data[i][j] for j in range(self.m)] for i in range(self.n)]
 
     @staticmethod
@@ -43,7 +45,7 @@ class Matrix:
                     a = slice(a, a + 1)
                 if type(b) is not slice:
                     b = slice(b, b + 1)
-                return Matrix([[x for x in itertools.islice(l, b.start, b.stop, b.step)] for l in itertools.islice(self.data, a.start, a.stop, a.step)])
+                return Matrix([[x for x in l[b]] for l in self.data[a]])
         else:
             return self.data[key]
 
@@ -57,8 +59,8 @@ class Matrix:
                     a = slice(a, a + 1)
                 if type(b) is not slice:
                     b = slice(b, b + 1)
-                for i_1, i_2 in enumerate(itertools.islice(range(self.n), a.start, a.stop, a.step)):
-                    for j_1, j_2 in enumerate(itertools.islice(range(self.m), b.start, b.stop, b.step)):
+                for i_1, i_2 in enumerate(range(self.n)[a]):
+                    for j_1, j_2 in enumerate(range(self.m)[b]):
                         self.data[i_2][j_2] = value[i_1][j_1]
         else:
             self.data[key] = value
@@ -68,7 +70,7 @@ class Matrix:
         return self.n
 
     def __iter__(self):
-        return (self[i, j] for j in range(self.m) for i in range(self.n))
+        return (self[i, j] for i in range(self.n) for j in range(self.m))
 
     def __add__(self, other):
         assert(other.n == self.n and other.m == self.m)
@@ -104,7 +106,7 @@ class Matrix:
     def denominators_lcm(self):
         return lcm(*(x.denominator for x in self)) if self.rational else 1
 
-    def row_reduce(self, bound=None, integerize=False):
+    def row_reduce(self, *, bound=None, integerize=False):
         """
         >>> Matrix([[0, 0, 1], [0, 1, 0], [1, 0, 0]]).row_reduce()
         (1 0 0
@@ -132,28 +134,18 @@ class Matrix:
                 if self[i, j] != 0:
                     self[l, :], self[i, :] = self[i, :], self[l, :]
                     self[l, :] /= self[l, j]
-                    for k in range(l + 1, self.n):
-                        self[k, :] -= self[l, :] * self[k, j]
+                    for k in range(self.n):
+                        if k != l:
+                            self[k, :] -= self[l, :] * self[k, j]
                     l += 1
-                    break
-        for i in range(self.n):
-            for j in range(bound):
-                if self[i, j] != 0:
-                    self[i, :] /= self[i, j]
-                    for k in range(i):
-                        self[k, :] -= self[i, :] * self[k, j]
                     break
         if integerize:
             self *= self.denominators_lcm()
             for i in range(self.n):
-                if all(x.denominator == 1 for x in self[i, :]):
-                    div = gcd(*(x.numerator for x in self[i, :]))
-                    div *= sign(next(filter(lambda x: x != 0, self[i, :]), 1))
-                    if div != 0:
-                        self[i, :] /= div
+                self[i, :] /= max(gcd(*(x.numerator for x in self[i, :])), 1)
         return self
 
-    def column_reduce(self, bound=None, integerize=False):
+    def column_reduce(self, *, bound=None, integerize=False):
         return self.transpose().row_reduce(bound=bound, integerize=integerize).transpose()
 
     def remove_zero_rows(self):
@@ -178,11 +170,11 @@ class Matrix:
     def null(self):
         """
         >>> Matrix([[1, 0, -3, 0, 2, -8], [0, 1, 5, 0, -1, 4], [0, 0, 0, 1, 7, -9], [0, 0, 0, 0, 0, 0]]).null()
-        (3  2  8
-         -5 -1 -4
+        (3  -2 8
+         -5 1  -4
          1  0  0
-         0  7  9
-         0  -1 0
+         0  -7 9
+         0  1  0
          0  0  1 )
         """
         reduced = self.append_bottom(Matrix.identity(self.m)).column_reduce(bound=self.n, integerize=True)
