@@ -1,4 +1,3 @@
-import itertools
 from fractions import Fraction
 from math import gcd, lcm
 
@@ -109,6 +108,9 @@ class Matrix:
     def append_bottom(self, other):
         assert self.m == other.m or self.n == 0 or other.n == 0
         return Matrix([[self[i, j] if i < self.n else other[i - self.n, j] for j in range(max(self.m, other.m))] for i in range(self.n + other.n)])
+
+    def append_bottom_right(self, other):
+        return Matrix([[self[i, j] if i < self.n and j < self.m else other[i - self.n, j - self.m] if i >= self.n and j >= self.m else 0 for j in range(self.m + other.m)] for i in range(self.n + other.n)])
 
     def denominators_lcm(self):
         return lcm(*(x.denominator for x in self)) if self.rational else 1
@@ -326,12 +328,12 @@ class Matrix:
          -8/75  13/75  -34/75
          -14/15 4/15   23/15 )
         >>> (b := m.triangularize_2())
-        (2  -1 3
+        (2  -1 1
          -3 1  0
          5  0  0)
         >>> m.change_basis(b)
-        (1 6/25 -14/25
-         0 1    -2
+        (1 6/25 -14/75
+         0 1    -2/3
          0 0    3     )
         """
         assert self.n == self.m
@@ -342,7 +344,7 @@ class Matrix:
             eigenvector = self.eigenspace(eigenvalue)[:, 0]
             space = eigenvector.find_base(self.n)
             triangularized = self.change_basis(space)[1:, 1:].triangularize_2()
-            padded = Matrix([[eigenvalue]] + [[0]] * (self.n - 1)).append_right(Matrix([[0] * (self.n - 1)]).append_bottom(triangularized))
+            padded = Matrix([[1]]).append_bottom_right(triangularized)
             return space * padded
 
 if __name__ == "__main__":
