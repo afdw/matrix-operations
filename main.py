@@ -1,5 +1,5 @@
 from fractions import Fraction
-from math import gcd, lcm
+from math import gcd, lcm, prod
 
 def sign(number):
     if number > 0:
@@ -14,6 +14,84 @@ def number_to_str(number):
         return f"{number.numerator}/{number.denominator}" if number.denominator != 1 else str(number.numerator)
     else:
         return str(number)
+
+inf = float("inf")
+
+class Polynomial:
+    def __init__(self, data = None):
+        if data is not None:
+            self.data = data
+        while self.data and self.data[-1] == 0:
+            self.data.pop()
+        self.n = len(self.data) - 1 if self.data else -inf
+        self.rational = all(type(self.data[i]) in {int, Fraction} for i in Polynomial.range(self.n))
+        self.data = [Fraction(self.data[i]) if self.rational else self.data[i] for i in Polynomial.range(self.n)]
+
+    @staticmethod
+    def range(n):
+        return range(n + 1 if n != -inf else 0)
+
+    def __repr__(self):
+        return " + ".join([f"{number_to_str(self[i])} * x^{i}" for i in Polynomial.range(self.n)]) if self.n != 0 else "0"
+
+    def __getitem__(self, key):
+        return self.data[key]
+
+    def __setitem__(self, key, value):
+        self.data[key] = value
+        self.__init__()
+
+    def __len__(self):
+        return self.n
+
+    def __iter__(self):
+        return (self[i] for i in range(self.n + 1))
+
+    def __eq__(self, other):
+        return self.data == other.data
+
+    def __add__(self, other):
+        return Polynomial([(self[i] if i <= self.n else 0) + (other[i] if i <= other.n else 0) for i in Polynomial.range(max(self.n, other.n))])
+
+    def __sub__(self, other):
+        return Polynomial([(self[i] if i <= self.n else 0) - (other[i] if i <= other.n else 0) for i in Polynomial.range(max(self.n, other.n))])
+
+    def __mul__(self, other):
+        if type(other) is not Polynomial:
+            return Polynomial([self[i] * other for i in Polynomial.range(self.n)])
+        else:
+            return Polynomial([sum((self[j] if j <= self.n else 0) * (other[i - j] if i - j <= other.n else 0) for j in Polynomial.range(i)) for i in Polynomial.range(self.n + other.n)])
+
+    def __truediv__(self, other):
+        return Polynomial([self[i] / other for i in Polynomial.range(self.n)])
+
+    def __pow__(self, power):
+        assert self.n == self.m
+        assert type(power) is int
+        assert power >= 0
+        result = Polynomial([1])
+        for _ in range(power):
+            result *= self
+        return result
+
+    def __call__(self, x):
+        """
+        >>> Polynomial([7, -9, 2])(Matrix([[1, 2, 3], [4, 5, 6], [7, 8, 9]]))
+        (58  54  57
+         96  124 138
+         141 180 226)
+        """
+        return sum((x**i * self[i] for i in Polynomial.range(self.n)), x - x)
+
+    def monic(self):
+        """
+        >>> Polynomial([3, 4, 1]) * Polynomial([7, -9, 2])
+        21 * x^0 + 1 * x^1 + -23 * x^2 + -1 * x^3 + 2 * x^4
+        """
+        if self.n != -inf:
+            return self / self.data[-1]
+        else:
+            return self
 
 class Matrix:
     def __init__(self, data = None):
@@ -97,6 +175,18 @@ class Matrix:
 
     def __truediv__(self, other):
         return Matrix([[self[i, j] / other for j in range(self.m)] for i in range(self.n)])
+
+    def __pow__(self, power):
+        assert self.n == self.m
+        assert type(power) is int
+        if power < 0:
+            self = self.inverse()
+            assert self is not None
+            power = -power
+        result = Matrix.identity(self.n)
+        for _ in range(power):
+            result *= self
+        return result
 
     def transpose(self):
         return Matrix([[self[i, j] for i in range(self.n)] for j in range(self.m)])
@@ -286,6 +376,10 @@ class Matrix:
         assert self.n == self.m
         return (self - Matrix.identity(self.n) * eigenvalue).null()
 
+    def generalized_eigenspace(self, eigenvalue):
+        assert self.n == self.m
+        return ((self - Matrix.identity(self.n) * eigenvalue)**self.n).null()
+
     def find_eigenvalue(self):
         """
         >>> Matrix([[1, 2, 0], [0, 1, 0], [0, 0, 3]]).find_eigenvalue()
@@ -346,6 +440,30 @@ class Matrix:
             triangularized = self.change_basis(space)[1:, 1:].triangularize_2()
             padded = Matrix([[1]]).append_bottom_right(triangularized)
             return space * padded
+
+    def diagonal(self):
+        assert self.n == self.m
+        return [self[i, i] for i in range(self.n)]
+
+    def characteristic_polynomial(self):
+        """
+        >>> Matrix([[0, 0, -4], [1, 2, 2], [-1, 0, 0]]).characteristic_polynomial()
+        8 * x^0 + -4 * x^1 + -2 * x^2 + 1 * x^3
+        """
+        assert self.n == self.m
+        return prod((Polynomial([-x, 1]) for x in self.change_basis(self.triangularize_1()).diagonal()), start=Polynomial([1]))
+
+    def minimal_polynomial(self):
+        """
+        >>> Matrix([[0, 0, -4], [1, 2, 2], [-1, 0, 0]]).minimal_polynomial()
+        -4 * x^0 + 0 * x^1 + 1 * x^2
+        """
+        assert self.n == self.m
+        for n in range(self.n + 1):
+            null = Matrix([list(self**i) for i in range(n)]).transpose().null()
+            if null.m != 0:
+                return Polynomial([null[i, 0] for i in range(n)])
+        assert False
 
 if __name__ == "__main__":
     import doctest
