@@ -1,5 +1,6 @@
 from fractions import Fraction
 from math import gcd, prod
+from collections import Counter
 from functools import reduce
 
 try:
@@ -399,6 +400,9 @@ class Matrix:
         assert self.n == self.m
         return ((self - Matrix.identity(self.n) * eigenvalue)**self.n).null()
 
+    def nilpotent(self):
+        return self.generalized_eigenspace(0).m == self.n
+
     def find_eigenvalue(self):
         """
         >>> Matrix([[1, 2, 0], [0, 1, 0], [0, 0, 3]]).find_eigenvalue()
@@ -464,13 +468,19 @@ class Matrix:
         assert self.n == self.m
         return [self[i, i] for i in range(self.n)]
 
+    def eigenvalues(self):
+        return self.change_basis(self.triangularize_2()).diagonal()
+
+    def collected_eigenvalues(self):
+        return list(Counter(self.eigenvalues()).items())
+
     def characteristic_polynomial(self):
         """
         >>> Matrix([[0, 0, -4], [1, 2, 2], [-1, 0, 0]]).characteristic_polynomial()
         8 * x^0 + -4 * x^1 + -2 * x^2 + 1 * x^3
         """
         assert self.n == self.m
-        return prod((Polynomial([-x, 1]) for x in self.change_basis(self.triangularize_1()).diagonal()), start=Polynomial([1]))
+        return prod((Polynomial([-x, 1]) for x in self.eigenvalues()), start=Polynomial([1]))
 
     def minimal_polynomial(self):
         """
@@ -483,6 +493,72 @@ class Matrix:
             if null.m != 0:
                 return Polynomial([null[i, 0] for i in range(n)])
         assert False
+
+    def jordan_basis(self):
+        """
+        >>> (m := Matrix([[1, 2, 0], [0, 1, 0], [0, 0, 3]]).change_basis(Matrix([[3, 2, 5], [1, 4, 2], [5, 5, 1]])))
+        (247/75 208/75 56/75
+         -8/75  13/75  -34/75
+         -14/15 4/15   23/15 )
+        >>> (b := m.jordan_basis())
+        (-2 25/6  -16
+         3  -25/6 -1
+         -5 0     10 )
+        >>> m.change_basis(b)
+        (1 1 0
+         0 1 0
+         0 0 3)
+        >>> (m := Matrix([[5, 1, 0, 0, 0, 0], [0, 5, 1, 0, 0, 0], [0, 0, 5, 0, 0, 0], [0, 0, 0, 5, 1, 0], [0, 0, 0, 0, 5, 0], [0, 0, 0, 0, 0, 5]]).change_basis(Matrix([[3, 2, 5, 1, 6, 4], [1, 4, 2, 4, 1, 3], [5, 5, 1, 7, 9, 6], [4, 6, 8, 1, 2, 3], [6, 7, 9, 1, 2, 3], [8, 4, 2, 7, 4, 3]])))
+        (-207/188  -1267/188 -1943/188  175/188   -87/188   -177/94
+         -11/752   3071/752  671/752    -1843/752 -1119/752 -285/188
+         4675/752  5561/752  11865/752  -309/752  311/752   429/188
+         5741/752  6463/752  9631/752   3181/752  601/752   489/188
+         3711/752  4109/752  8253/752   -2809/752 1715/752  -39/188
+         -9211/752 -9833/752 -19049/752 5893/752  3537/752  889/188 )
+        >>> (b := m.jordan_basis())
+        (720   -2350/7  727795/567   -405/14 43705/756  1855975/18144
+         -1380 0        -168025/378  60      -29875/504 -60775/432
+         -60   0        -493735/1134 0       11075/1512 23375/1296
+         -660  2820/7   0            180/7   0          4675/112
+         -1020 -6110/7  0            585/14  0          -60775/672
+         2860  23500/21 0            -830/7  0          116875/1008  )
+        >>> m.change_basis(b)
+        (5 1 0 0 0 0
+         0 5 1 0 0 0
+         0 0 5 0 0 0
+         0 0 0 5 1 0
+         0 0 0 0 5 0
+         0 0 0 0 0 5)
+        """
+        assert self.n == self.m
+        if self.nilpotent():
+            def chains_to_matrix(chains):
+                return reduce(Matrix.append_right, (vector for chain in chains for vector in chain), Matrix([]))
+            def inner(self):
+                if self.n == 0:
+                    return []
+                elif self.n == 1:
+                    return [[Matrix([[1]])]]
+                else:
+                    space = self.range()
+                    chains = inner(self.restrict(space))
+                    for chain in chains:
+                        for i in range(len(chain)):
+                            chain[i] = space * chain[i]
+                        chain.append(self.find_inverse(chain[-1]))
+                    chains_matrix = chains_to_matrix(chains)
+                    chains_matrix_base = chains_matrix.find_base()
+                    chains_matrix_base_vectors = [chains_matrix_base[:, i] for i in range(chains_matrix.m, self.n)]
+                    for chains_matrix_base_vector in chains_matrix_base_vectors:
+                        chains.append([chains_matrix_base_vector - chains_matrix * Matrix([[0]]).append_bottom(chains_matrix.find_inverse(self * chains_matrix_base_vector)[:-1, :])])
+                    return chains
+            return chains_to_matrix(inner(self))
+        else:
+            result = Matrix([])
+            for eigenvalue, _ in self.collected_eigenvalues():
+                space = self.generalized_eigenspace(eigenvalue)
+                result = result.append_right(space * ((self - Matrix.identity(self.n) * eigenvalue).restrict(space)).jordan_basis())
+            return result
 
 if __name__ == "__main__":
     import doctest
