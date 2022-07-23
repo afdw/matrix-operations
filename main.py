@@ -1,5 +1,24 @@
 from fractions import Fraction
-from math import gcd, lcm, prod
+from math import gcd, prod
+from functools import reduce
+
+try:
+    from math import lcm
+except:
+    def lcm(a, b):
+        return abs(a * b) // gcd(a, b)
+
+try:
+    gcd(1, 2, 3)
+except:
+    old_gcd = gcd
+    gcd = lambda *x: reduce(old_gcd, x, 0)
+
+try:
+    lcm(1, 2, 3)
+except:
+    old_lcm = lcm
+    lcm = lambda *x: reduce(old_lcm, x, 1)
 
 def sign(number):
     if number > 0:
